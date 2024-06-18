@@ -1,29 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
     tools:context=".MainActivity"
-    android:background="#F0F0F0">
+    android:background="@drawable/gradient_disconnect">
 
-    <TextView
-        android:id="@+id/pairedList"
+    <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="356dp"
-        android:layout_marginBottom="16dp"
+        android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="#FFFFFF"
-        android:elevation="4dp"
-        android:gravity="center"
-        android:hint="Paired devices"
-        android:padding="24dp"
-        android:textSize="18sp"
-        android:textColor="#000000"
-        android:fontFamily="sans-serif-medium"/>
+        android:layout_marginBottom="16dp"
+        android:gravity="center">
 
+
+        <TextView
+            android:id="@+id/paired_device_name"
+            android:layout_width="match_parent"
+            android:layout_height="25dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:text="연결 기기 명"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/location"
+            android:layout_width="match_parent"
+            android:layout_height="25dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:text=""
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:layout_below="@id/paired_device_name"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:id="@+id/pairedList"
+            android:layout_width="300dp"
+            android:layout_height="300dp"
+            android:layout_centerInParent="true"
+            android:background="@drawable/circle_background"
+            android:gravity="center"
+            android:hint="Paired devices"
+            android:padding="24dp"
+            android:textSize="18sp"
+            android:textColor="#000000"
+            android:fontFamily="sans-serif-medium"
+            android:layout_marginTop="16dp" />
+    </RelativeLayout>
 
     <Button
         android:id="@+id/btnDisConnect"

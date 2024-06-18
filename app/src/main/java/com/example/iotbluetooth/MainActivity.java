@@ -1,6 +1,5 @@
 package com.example.iotbluetooth;
 
-import java.io.*;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
@@ -8,7 +7,13 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -23,8 +28,10 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,13 +44,17 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_FINE_LOCATION_PERMISSION = 2; // 위치 권한 요청 코드
     private BroadcastReceiver broadcastReceiver; // 블루투스 기기 검색 결과를 수신하는 브로드캐스트 리시버
     private BluetoothManager bluetoothManager; // 블루투스 매니저
-    private BluetoothAdapter bluetoothAdapter; // 블루투스 어댑터
+    private BluetoothAdapter bluetoothAdapter;
+    private TextView textView_conncetDevice, textView_Location; // 블루투스 어댑터
     public static TextView pairedList, scanList; // 페어링된 기기 목록을 표시하는 텍스트뷰
     private Button connectBtn, btnFind, btnOnSwitch; // 연결, 찾기, 스위치 버튼
     private ConnectThread thread; // 블루투스 연결을 처리하는 스레드
     private AlertDialog alertDialog; // 디바이스 목록을 표시하는 알림창
     HashMap<String, String> deviceMap = new HashMap<>(); // 검색된 기기 목록
     HashMap<String, String> pairedDeviceMap = new HashMap<>(); // 페어링된 기기 목록
+    private LocationManager locationManager;
+    private GPSListener gpsListener;
+
     private final ActivityResultLauncher<Intent> activityResultLauncher =
             registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
                 if (result.getResultCode() == Activity.RESULT_OK) {
@@ -77,9 +88,24 @@ public class MainActivity extends AppCompatActivity {
                 thread = new ConnectThread(uuid, device, this);
                 thread.run();
                 showMessage(this, device.getName() + "과 연결되었습니다.");
+                // 연결된 디바이스 이름 출력
+                textView_conncetDevice.setText(device.getName());
+                // 위치 서비스 시작
+                startLocationService();
             } catch (Exception e) { // 연결에 실패할 경우 호출됨
                 showMessage(this, "기기의 전원이 꺼져 있습니다. 기기를 확인해주세요.");
             }
+        }
+    }
+
+    // 연결 끊기 함수
+    private void disconnectDevice() {
+        if (thread != null) {
+            thread.cancel(MainActivity.this);
+            showMessage(this, "연결이 끊어졌습니다.");
+            textView_conncetDevice.setText("");
+            textView_Location.setText("");
+            stopLocationService();
         }
     }
 
@@ -97,6 +123,14 @@ public class MainActivity extends AppCompatActivity {
         connectBtn = findViewById(R.id.btnDisConnect);
         btnFind = findViewById(R.id.btnFind);
         btnOnSwitch = findViewById(R.id.btnOnSwitch);
+        textView_conncetDevice = (TextView) findViewById(R.id.paired_device_name);
+        textView_Location = (TextView) findViewById(R.id.location);
+
+        // 위치 권한 허용 코드
+        String[] permission_list = {
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+        };
 
         // 블루투스를 지원하지 않는 장비일 경우 메시지 표시 후 종료
         if (bluetoothManager == null || bluetoothAdapter == null) {
@@ -118,7 +152,7 @@ public class MainActivity extends AppCompatActivity {
         connectBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                thread.cancel(MainActivity.this); // 연결 끊기
+                disconnectDevice(); // 연결 끊기
                 pairedList.setText("Disconnected");
             }
         });
@@ -126,9 +160,15 @@ public class MainActivity extends AppCompatActivity {
         btnOnSwitch.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                thread.connectedThread.switchOn(); // 스위치 켜기/끄기
+                if (thread != null && thread.connectedThread != null) {
+                    thread.connectedThread.switchOn(); // 스위치 켜기/끄기
+                    showMessage(MainActivity.this, "스위치 상태가 변경되었습니다.");
+                } else {
+                    showMessage(MainActivity.this, "블루투스 기기가 연결되지 않았습니다.");
+                }
             }
         });
+
     }
 
     // 블루투스 활성화 요청 함수
@@ -261,6 +301,10 @@ public class MainActivity extends AppCompatActivity {
 
                                 String deviceName = device.getName();
                                 String deviceHardwareAddress = device.getAddress();
+                                //상단에 연결된 디바이스 이름 출력
+                                textView_conncetDevice.setText(device.getName());
+                                //현재 위치 출력
+                                startLocationService();
 
                                 if (deviceName != null && deviceHardwareAddress != null && !deviceMap.containsKey(deviceName)) {
                                     deviceMap.put(deviceName, deviceHardwareAddress);
@@ -326,5 +370,83 @@ public class MainActivity extends AppCompatActivity {
             bluetoothAdapter.cancelDiscovery();
             showMessage(this, "기기 검색이 중단되었습니다.");
         }
+    }
+
+    public String getCurrentaddress(double latitude, double longtitude) {
+
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+
+        List<Address> addresses;
+
+        try {
+            addresses = geocoder.getFromLocation(latitude, longtitude, 7);
+        } catch (IOException e) {
+            Toast.makeText(this, "지오코더 서비스 사용 불가", Toast.LENGTH_LONG).show();
+            return "지오코더 서비스 사용불가";
+        } catch (IllegalArgumentException i) {
+            Toast.makeText(this, "잘못된 GPS 좌표", Toast.LENGTH_LONG).show();
+            return "잘못된 GPS 좌표";
+        }
+        return addresses.get(0).getAdminArea() + " " + addresses.get(0).getLocality() + " "
+                + addresses.get(0).getSubLocality();
+    }
+
+    private void startLocationService() {
+        if (locationManager == null) {
+            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        }
+
+        if (gpsListener == null) {
+            gpsListener = new GPSListener();
+        }
+
+        long minTime = 10000;
+        float minDistance = 0;
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        locationManager.requestLocationUpdates(
+                LocationManager.NETWORK_PROVIDER,
+                minTime,
+                minDistance,
+                gpsListener);
+    }
+
+    private void stopLocationService() {
+        if (locationManager != null && gpsListener != null) {
+            locationManager.removeUpdates(gpsListener);
+        }
+    }
+
+    private class GPSListener implements LocationListener {
+
+        public void onLocationChanged(Location location) {
+            Double latitude = location.getLatitude();
+            Double longitude = location.getLongitude();
+
+            String msg = getCurrentaddress(latitude, longitude);
+
+            // null을 공백으로 대체
+            if (msg == null) {
+                msg = "";
+            } else {
+                msg = msg.replace("null", "");
+            }
+
+            Log.i("GPSLocationService", msg);
+//            textView_Location.setText(msg);
+        }
+
+
+        public void onProviderDisabled(String provider) {
+        }
+
+        public void onProviderEnabled(String provider) {
+        }
+
+        public void onStatusChanged(String provider, int status, Bundle extras) {
+        }
+
     }
 }
